@@ -8,6 +8,45 @@ Gellért Szalai (gs223xt)
 
 This project is a **smart fuel station simulator** that automatically detects when a vehicle starts fueling, measures the duration to estimate liters pumped, and dynamically adjusts the fuel price based on **ambient temperature and light** conditions. 
 
+It uses a Raspberry Pi Pico WH running MicroPython with several sensors (Hall effect, DHT11, photoresistor, tilt switch), and serves a **real-time web dashboard** directly from the Pico. The built-in web server provides live charts, statistics, and CSV export functionality accessible from any device on the network.
+
+For someone familiar with IoT and MicroPython, building this project (including all sensor wiring, web interface code, and dashboard features) might take around **8–10 hours**, factoring in debugging and testing.
+
+---
+
+## Objective
+
+The idea originated from exploring how environmental factors (like heat or sunlight) can impact fuel volatility, safety margins, or even pricing models. 
+
+The goals of the project were:
+
+- **Detect and measure fueling activity automatically** (no manual input required).
+- Adjust the **price per liter dynamically** based on temperature and light intensity.
+- Simulate a tilt-based anomaly detection to shut down fueling for safety.
+- Provide a **self-contained web dashboard** for real-time monitoring and data export.
+
+Insights I hoped to gain:
+
+- How environmental metrics change during typical operation.
+- How often anomalies (like excessive tilt) would occur.
+- What a simple, standalone IoT fuel station interface might look like.
+
+---
+
+Everything runs **directly on the Raspberry Pi Pico** with a built-in web server.
+
+- **Web server:** Runs on the Pico itself, accessible via WiFi
+- **Data storage:** In-memory storage of fuel history (last 5 sessions displayed)
+- **Dashboard:** Real-time HTML interface with interactive charts
+- **Data export:** CSV download functionality for fuel logs
+
+This approach is:
+- **Self-contained:** No external databases or services needed
+- **Portable:** Works anywhere with WiFi
+- **Simple:** Just connect to the Pico's web interface
+
+The web dashboard updates every 3 seconds and includes celebration animations when fueling completes!lator** that automatically detects when a vehicle starts fueling, measures the duration to estimate liters pumped, and dynamically adjusts the fuel price based on **ambient temperature and light** conditions. 
+
 It uses a Raspberry Pi Pico WH running MicroPython, several sensors (Hall effect, DHT11, photoresistor, tilt switch), and sends data to a **Dockerized TIG stack (Telegraf, InfluxDB, Grafana)** on a Windows laptop. This allows for live dashboards of fueling activity and environmental influences.
 
 For someone familiar with IoT and Docker, building this project (including all sensor wiring, Docker config, MicroPython code, and Grafana dashboards) might take around **10–12 hours**, factoring in debugging and coffee breaks.
@@ -37,18 +76,18 @@ Insights I hoped to gain:
 
 Here’s a list of the materials used:
 
-| Component                     | Purpose                               | Source / Cost           |
-|--------------------------------|--------------------------------------|-------------------------|
-| Raspberry Pi Pico WH           | Main controller + WiFi               | Electrokit (~10€)       |
-| Breadboard + jumper wires      | Connect components                   | Starter kit             |
-| TLV49645 Hall effect sensor    | Detect magnet (car present)          | ~3€                     |
-| Magnet                         | Trigger hall sensor                  | Recycled (free)         |
-| DHT11                          | Read temperature & humidity          | Starter kit included    |
-| Photoresistor + 10kΩ resistor  | Measure light level                  | Starter kit included    |
-| Tilt switch                    | Detect abnormal orientation          | Starter kit included    |
-| Red, Yellow, Green LEDs + 330Ω | Visual fueling status indicator      | Starter kit included    |
-| Windows laptop                 | Run Docker TIG stack                 | Already owned           |
-| Micro-USB cable                | Connect Pico to PC                   | ~5€                     |
+| Component                     | Purpose                               |
+|--------------------------------|---------------------------------------|
+| Raspberry Pi Pico WH           | Main controller + WiFi               |
+| Breadboard + jumper wires      | Connect components                   |
+| TLV49645 Hall effect sensor    | Detect magnet (car present)          |
+| Magnet                         | Trigger hall sensor                  |
+| DHT11                          | Read temperature & humidity          |
+| Photoresistor + 10kΩ resistor  | Measure light level                  |
+| Tilt switch                    | Detect abnormal orientation          |
+| Red, Yellow, Green LEDs + 330Ω | Visual fueling status indicator      |
+| Windows laptop                 | Run web browser to view dashboard    |
+| Micro-USB cable                | Connect Pico to PC                   |
 
 ---
 
@@ -62,17 +101,18 @@ For this project I used **Thonny** as my IDE. It’s particularly convenient for
 
 ### My workflow:
 
-- **IDE:** Thonny (select `MicroPython (Raspberry Pi Pico)`)
+- **IDE:** Thonny for MicroPython development
 - **Execution:** Just click *Run current script* in Thonny — the Pico executes over USB.
-- **Docker Desktop:** Used to spin up the TIG stack with a `docker-compose.yml`.
+- **Web Interface:** Built-in web server serves a dashboard at the Pico's IP address.
 
-### Docker stack includes:
+### Built-in web server includes:
 
-- **Telegraf:** HTTP listener plugin to receive data from Pico.
-- **InfluxDB:** Stores time-series data.
-- **Grafana:** Builds beautiful dashboards.
+- **Real-time dashboard:** Shows fueling status, charts, and statistics
+- **Data API:** JSON endpoint for live data updates  
+- **CSV export:** Download fueling history as spreadsheet
+- **Interactive charts:** Bar charts and pie charts with Chart.js
 
-No cloud services — everything runs on my Windows machine.
+No external services needed — everything runs on the Pico itself with a simple web interface.
 
 ---
 
@@ -150,72 +190,93 @@ if hall_sensor.value() == 0 and not fueling:
 
 ### ⏳ Measuring fueling
 ```python
-elapsed = time.time() - start_time
-liters = elapsed * 0.1  # approx 0.1 L/s for simulation
-price_per_liter = 1.5 + (temp / 100) + (light / 100)
-total_price = liters * price_per_liter
+duration = end_time - start_time
+# Adjust flow rate based on temperature  
+adj_flow = FLOW_RATE * 0.9 if temp > TEMP_THRESHOLD else FLOW_RATE
+liters = duration * adj_flow
+```
+
+### 💰 Dynamic pricing
+```python
+light_val = photoresistor.read_u16()
+is_dark = light_val < LIGHT_THRESHOLD
+# Apply surcharge in dark conditions
+price_per_liter = PRICE_PER_LITER * SURCHARGE_RATE if is_dark else PRICE_PER_LITER
+price = liters * price_per_liter
 ```
 
 ### 🚦 Safety / tilt detection
 ```python
-if tilt_sensor.value() == 0:
-    print("⚠️ Abnormal tilt! Stopping fueling.")
-    red_led.on()
+if fueling and tilt_switch.value() == 1:  # Tilt detected during fueling
+    # Record partial fueling session
+    fuel_history.append((f"#{fuel_count}", liters, price, is_dark, True))
+    current_status = "⚠️ TILT STOPPED — recorded partial fueling"
+    led_red.on()
     fueling = False
 ```
 
-### 🌐 Send to Telegraf
+### 🌐 Web Dashboard
 ```python
-payload = json.dumps({
-    "liters": liters,
-    "price": total_price,
-    "temp": temp,
-    "light": light,
-    "tilt": tilt_sensor.value()
-})
-urequests.post("http://192.168.1.10:5000/telegraf", data=payload)
+# Built-in web server serves real-time dashboard
+json_data = '{' + \
+    f'"status":"{current_status}",' + \
+    f'"totalLiters":{total_liters:.2f},' + \
+    f'"avgPrice":{avg_price:.2f},' + \
+    f'"labels":[{",".join(labels_list)}],' + \
+    f'"liters":[{",".join(liters_list)}]' + \
+'}'
 ```
 
 ### 🚥 LED indicator
-- **Green:** fueling normal (<5L)
-- **Yellow:** fueling >5L
-- **Red:** tilt detected
+- **Yellow:** Waiting for magnet (standby)
+- **Green:** Fueling in progress  
+- **Red:** Tilt detected or fueling complete
+- **Celebration:** Green/Yellow blinking when fueling completes normally
 
 ---
 
-## Transmitting the data / connectivity
+## Web Interface & Connectivity
 
-- **Primary connection:** No WiFi (runs over USB network to laptop)
-- **Transport:** HTTP POST
-- **Payload:** JSON like:
+- **Connection:** WiFi network connection
+- **Web Server:** Built-in HTTP server on port 80
+- **Dashboard:** Real-time HTML interface with interactive charts
+- **Data Format:** JSON API for live updates
 
 ```json
 {
-  "liters": 1.4,
-  "price": 2.07,
-  "temp": 26,
-  "light": 150,
-  "tilt": 0
+  "status": "🎉 Fueling complete. Nice job!",
+  "totalLiters": 2.45,
+  "avgPrice": 1.95,
+  "labels": ["#1", "#2", "#3"],
+  "liters": [1.2, 0.8, 0.45],
+  "types": ["Normal", "Normal", "Tilt"],
+  "prices": ["€2.22", "€1.48", "€0.83"]
 }
 ```
 
-- **Frequency:** ~once per second, only if fueling or important state changes.
+- **Features:** Live charts, CSV export, confetti celebrations
+- **Updates:** Dashboard refreshes every 3 seconds automatically
 
-This could easily switch to MQTT for multi-pump coordination or Mosquitto + Node-RED pipelines.
+The web interface includes Chart.js for beautiful bar charts and pie charts, plus canvas-confetti for celebrations when fueling completes!
 
 ---
 
 ## Presenting the data
 
-The dashboard is in Grafana, pulling directly from InfluxDB.
+The dashboard runs directly on the Pico's web server, accessible via any web browser.
 
-- One panel shows liters over time.
-- Another overlays price vs temp and light.
-- Alerts highlight any abnormal tilt events.
+**Dashboard features:**
+- **Real-time status:** Current fueling state and progress
+- **Session history:** Last 5 fueling sessions with charts
+- **Statistics:** Total liters pumped and average price
+- **Interactive charts:** Bar chart (liters) and pie chart (normal vs tilt stops)
+- **CSV export:** Download complete fueling history
+- **Celebrations:** Confetti animation when fueling completes successfully
 
-### Retention & database:
-- InfluxDB stores for 30 days (default config).
-- Each fuel event is logged as raw data for future analysis.
+**Data storage:**
+- **In-memory:** Fuel history stored in Python list
+- **Persistent:** Data persists during session (lost on restart)
+- **Export:** CSV download for permanent records
 
 ---
 
