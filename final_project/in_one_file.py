@@ -1,8 +1,9 @@
-import network
+import network  # type: ignore
 import time
-from machine import Pin, ADC
-import dht
+from machine import Pin, ADC  # type: ignore
+import dht  # type: ignore
 import _thread
+
 
 # -------------------- WIFI SETUP --------------------
 ssid = 'Sant Eduard 2-1'
