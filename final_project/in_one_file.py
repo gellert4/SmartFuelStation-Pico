@@ -6,8 +6,8 @@ import _thread
 
 
 # -------------------- WIFI SETUP --------------------
-ssid = 'Sant Eduard 2-1'
-password = 'IneditSantEduard2-1'
+ssid = 'Vodafone-C931'
+password = 'sKtHQ5Wjnkx8wndd'
 
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
