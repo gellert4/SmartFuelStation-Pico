@@ -295,7 +295,11 @@ The project successfully demonstrates a complete IoT fuel station simulator with
 - **MQTT integration:** Enable multiple pump coordination
 
 ### Pictures:
-*(Would include breadboard photos and dashboard screenshots here)*
+### Hardware Wiring
+![Fuel station wiring](images/wiring.png)
+
+### Web Dashboard
+![Web dashboard](images/dashboard.png)
 
 The project exceeded my expectations for what's possible with a simple microcontroller and demonstrates how powerful modern IoT development can be with the right tools and approach.
 
